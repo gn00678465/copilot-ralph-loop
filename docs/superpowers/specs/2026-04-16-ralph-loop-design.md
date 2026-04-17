@@ -162,7 +162,7 @@ fullCount  = min(3, len(toInject))
 Edge cases:
 - `N = 0` or file missing → inject nothing
 - `totalEntries < 3` → all injected entries get full JSON (fullCount = totalEntries)
-- Invalid JSON lines → skip silently, log warning
+- Invalid JSON lines → skip for injection, log warning
 
 ---
 

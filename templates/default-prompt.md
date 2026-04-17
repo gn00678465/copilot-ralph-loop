@@ -3,7 +3,7 @@
 ## Your Task
 
 1. Read `progress.jsonl` to understand what has been done so far.
-2. If instructed to read `AGENTS.md` or `CLAUDE.md`, read them now for project conventions.
+2. If context files are listed below, read them now for project conventions.
 3. Work on the assigned task — make focused, incremental changes.
 4. Before committing: run typecheck and tests. If the project has a lint script, run it too.
 5. `git commit` your changes with a clear message.
@@ -21,17 +21,6 @@ Append one JSON line to `progress.jsonl`:
 - `summary`: One sentence describing what was accomplished this iteration.
 - `files`: Paths of files you created or modified.
 - `learnings`: Non-obvious things you discovered (e.g., "migrations must run before seeds").
-
-## Consolidate Patterns
-
-When you discover a reusable pattern, add it to the `## Codebase Patterns` section in `AGENTS.md`.
-
-## Update AGENTS.md
-
-Update `AGENTS.md` whenever you:
-- Establish a new convention or pattern
-- Learn something important about the codebase structure
-- Discover a non-obvious constraint or dependency
 
 ## Quality Requirements
 

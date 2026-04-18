@@ -4,9 +4,9 @@
 
 ## Project Status Snapshot
 
-**Branch:** `feature/ralph-loop-impl`
+**Branch:** `main`
 **Base:** `main`
-**Last Updated:** 2026-04-17
+**Last Updated:** 2026-04-18
 
 ### Completed
 
@@ -18,30 +18,33 @@
 | task-3 | Prompt builder — 5 functions + 19 unit tests (TDD) | Done |
 | task-4 | Loop pure logic — isComplete + validateProgressAppend + 10 tests (TDD) | Done |
 | task-5 | Loop orchestration — runLoop() with Copilot SDK | Done |
-| task-6 | CLI entry point — parseArgs + shebang + 9 tests (TDD) | Done |
+| task-6 | CLI entry point — parseArgs + shebang + 14 tests (TDD) | Done |
+| review-fixes | Code review fixes — per-iter retry, numeric validation, parse error surfacing, SDK version pin | Done (uncommitted) |
+| merge | Merge feature/ralph-loop-impl to main + worktree cleanup | Done |
 
 ### Pending (by priority)
 
 | ID | Title | Status |
 |----|-------|--------|
-| merge | Merge or push feature/ralph-loop-impl to main | Pending — awaiting user decision |
+| commit-fixes | Commit 4 modified files (review fixes) | Pending |
+| push | Push main to origin | Pending |
 
 ---
 
 ## Test Status
 
-bun test: 38/38 passed | bun run typecheck: clean (tsc --noEmit, 0 errors) | bun run lint: 7 files checked, no issues
+bun test: 43/43 passed | bun run typecheck: clean (tsc --noEmit, 0 errors) | bunx biome check src/: no issues
 
 ---
 
 ## Blockers & Risks
 
-- Branch `feature/ralph-loop-impl` not yet merged or pushed — implementation complete but isolated in worktree
+- 4 files modified but uncommitted (`src/loop.ts`, `src/index.ts`, `src/index.test.ts`, `package.json`)
 
 ---
 
 ## Last Session Endpoint
 
-All 7 implementation tasks complete (38 tests pass, typecheck + lint clean) on branch `feature/ralph-loop-impl`; next step is to merge or push the branch to main.
+Code review fixes applied (43/43 tests pass, 3 bugs fixed + SDK version pinned); next step is committing the 4 modified files and pushing main to origin.
 
 > Full session history in `session-log.jsonl` (append-only)

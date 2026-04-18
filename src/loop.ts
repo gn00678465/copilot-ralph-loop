@@ -39,6 +39,16 @@ export function validateProgressAppend(
   );
 }
 
+export function validateProgressEntryForIteration(
+  before: ProgressState,
+  after: ProgressState,
+  currentIteration: number,
+): boolean {
+  if (!validateProgressAppend(before, after)) return false;
+  const latest = after.parsedEntries[after.parsedEntries.length - 1];
+  return latest?.iteration === currentIteration;
+}
+
 export function createPermissionHandler(dangerous: boolean): PermissionHandler {
   if (dangerous) return approveAll;
   return (req: PermissionRequest) => {
@@ -103,8 +113,7 @@ export async function runLoop(args: CliArgs): Promise<void> {
       currentIteration: i,
       maxIterations: maxIter,
       progressEntryCount: progressBefore.parsedEntries.length,
-      lastProgressSummary:
-        progressBefore.parsedEntries.at(-1)?.summary ?? null,
+      lastProgressSummary: progressBefore.parsedEntries.at(-1)?.summary ?? null,
       progressText,
     };
     const iterPrompt = buildIterationPrompt(prompt, iterPromptContext);
@@ -206,9 +215,9 @@ export async function runLoop(args: CliArgs): Promise<void> {
 
     // Session is disconnected before reading progress (eliminates post-send race)
     const progressAfter = loadProgressFile(dir);
-    if (!validateProgressAppend(progressBefore, progressAfter)) {
+    if (!validateProgressEntryForIteration(progressBefore, progressAfter, i)) {
       log.error(
-        "Agent did not append exactly one valid progress entry — aborting",
+        "Agent did not append exactly one valid progress entry for the current iteration — aborting",
       );
       await client.stop();
       process.exit(1);

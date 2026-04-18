@@ -10,7 +10,11 @@ import {
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isComplete, validateProgressAppend } from "./loop.ts";
+import {
+  isComplete,
+  validateProgressAppend,
+  validateProgressEntryForIteration,
+} from "./loop.ts";
 import type { ProgressState } from "./types.ts";
 
 // ── isComplete ────────────────────────────────────────────────────────────────
@@ -103,6 +107,62 @@ describe("validateProgressAppend", () => {
     const before = ps(2, 2, ["A", "B"]);
     const after = ps(3, 3, ["A", "X", "C"]);
     expect(validateProgressAppend(before, after)).toBe(false);
+  });
+});
+
+const makeProgressEntry = (iteration: number) => ({
+  iteration,
+  timestamp: "2026-01-01T00:00:00Z",
+  summary: `did work ${iteration}`,
+  files: [],
+  learnings: [],
+});
+
+describe("validateProgressEntryForIteration", () => {
+  it("returns false when append validation fails before checking the iteration", () => {
+    const before: ProgressState = {
+      totalLineCount: 1,
+      lines: [JSON.stringify(makeProgressEntry(1))],
+      parsedEntries: [makeProgressEntry(1)],
+    };
+
+    expect(validateProgressEntryForIteration(before, before, 1)).toBe(false);
+  });
+
+  it("returns false when the appended entry iteration does not match the active iteration", () => {
+    const before: ProgressState = {
+      totalLineCount: 1,
+      lines: [JSON.stringify(makeProgressEntry(1))],
+      parsedEntries: [makeProgressEntry(1)],
+    };
+    const after: ProgressState = {
+      totalLineCount: 2,
+      lines: [
+        JSON.stringify(makeProgressEntry(1)),
+        JSON.stringify(makeProgressEntry(99)),
+      ],
+      parsedEntries: [makeProgressEntry(1), makeProgressEntry(99)],
+    };
+
+    expect(validateProgressEntryForIteration(before, after, 2)).toBe(false);
+  });
+
+  it("returns true when the appended entry iteration matches the active iteration", () => {
+    const before: ProgressState = {
+      totalLineCount: 1,
+      lines: [JSON.stringify(makeProgressEntry(1))],
+      parsedEntries: [makeProgressEntry(1)],
+    };
+    const after: ProgressState = {
+      totalLineCount: 2,
+      lines: [
+        JSON.stringify(makeProgressEntry(1)),
+        JSON.stringify(makeProgressEntry(2)),
+      ],
+      parsedEntries: [makeProgressEntry(1), makeProgressEntry(2)],
+    };
+
+    expect(validateProgressEntryForIteration(before, after, 2)).toBe(true);
   });
 });
 
@@ -271,7 +331,7 @@ describe("runLoop orchestration", () => {
 // ── runLoop progress validation ───────────────────────────────────────────────
 
 const APPEND_ERROR =
-  "Agent did not append exactly one valid progress entry — aborting";
+  "Agent did not append exactly one valid progress entry for the current iteration — aborting";
 
 const validEntry = JSON.stringify({
   iteration: 1,
@@ -326,6 +386,18 @@ describe("runLoop progress validation", () => {
   it("hard-fails when agent appends one valid entry plus one malformed non-empty line", async () => {
     sendAndWaitMock.mockImplementationOnce(async () => {
       writeFileSync(progressFile, `${validEntry}\nBAD LINE\n`);
+    });
+
+    await expect(runLoop({ ...baseArgs, dir: tmpTestDir })).rejects.toThrow(
+      "process.exit",
+    );
+
+    expect(logErrorMock).toHaveBeenCalledWith(APPEND_ERROR);
+  });
+
+  it("hard-fails when agent appends an entry for the wrong iteration", async () => {
+    sendAndWaitMock.mockImplementationOnce(async () => {
+      writeFileSync(progressFile, `${JSON.stringify(makeProgressEntry(99))}\n`);
     });
 
     await expect(runLoop({ ...baseArgs, dir: tmpTestDir })).rejects.toThrow(

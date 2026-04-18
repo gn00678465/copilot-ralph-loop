@@ -301,6 +301,21 @@ describe("buildSystemMessage", () => {
     expect(result).toContain("Agent Instructions");
   });
 
+  it("includes staged-work and handoff guidance", () => {
+    const result = buildSystemMessage(tmpDir, "<promise>COMPLETE</promise>");
+    expect(result).toContain("Advance one concrete milestone per iteration");
+    expect(result).toContain(
+      "decide what handoff the next iteration needs so it can continue without re-planning",
+    );
+    expect(result).toContain("Append one handoff entry to `progress.jsonl`");
+    expect(result).toContain(
+      "Only output `<promise>COMPLETE</promise>` after final verification",
+    );
+    expect(result).toContain(
+      "Output `<promise>COMPLETE</promise>` only after final verification is complete",
+    );
+  });
+
   it("replaces {COMPLETE_TEXT} placeholder", () => {
     const result = buildSystemMessage(tmpDir, "<promise>COMPLETE</promise>");
     expect(result).toContain("<promise>COMPLETE</promise>");

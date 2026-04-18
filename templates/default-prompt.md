@@ -4,11 +4,12 @@
 
 1. Read `progress.jsonl` to understand what has been done so far.
 2. If context files are listed below, read them now for project conventions.
-3. Work on the assigned task — make focused, incremental changes.
-4. Before committing: run typecheck and tests. If the project has a lint script, run it too.
-5. `git commit` your changes with a clear message.
-6. Append a new entry to `progress.jsonl` (see format below).
-7. When the task is fully complete, output `{COMPLETE_TEXT}` as the **last line** of your response. Nothing after it.
+3. Advance one concrete milestone per iteration. Do not collapse setup, implementation, and verification into one iteration when staged work remains.
+4. Before moving on, decide what handoff the next iteration needs so it can continue without re-planning.
+5. Before committing: run typecheck and tests. If the project has a lint script, run it too.
+6. `git commit` your changes with a clear message.
+7. Append one handoff entry to `progress.jsonl` (see format below).
+8. Only output `{COMPLETE_TEXT}` after final verification is complete, and only as the last non-empty line.
 
 ## Progress Report Format
 
@@ -36,7 +37,7 @@ If the task involves UI changes and browser tools are available, verify the chan
 
 ## Stop Condition
 
-Output `{COMPLETE_TEXT}` as the **last line** of your response when the task is fully done. This must be the final non-empty line — nothing after it. Do not output it until the task is truly complete.
+Output `{COMPLETE_TEXT}` only after final verification is complete, and only as the **last line** of your response. This must be the final non-empty line — nothing after it. Do not output it until the task is truly complete.
 
 ## Important
 

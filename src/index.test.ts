@@ -70,13 +70,40 @@ describe("parseArgs", () => {
   it("throws when --progress-entries is not a number", () => {
     expect(() =>
       parseArgs(["--prompt", "x", "--progress-entries", "abc"]),
-    ).toThrow("--progress-entries must be a positive integer");
+    ).toThrow("--progress-entries must be a non-negative integer");
   });
 
-  it("throws when --progress-entries is zero or negative", () => {
+  it("throws when --progress-entries is negative", () => {
     expect(() =>
       parseArgs(["--prompt", "x", "--progress-entries", "-1"]),
-    ).toThrow("--progress-entries must be a positive integer");
+    ).toThrow("--progress-entries must be a non-negative integer");
+  });
+
+  it("accepts --progress-entries 0 (inject nothing)", () => {
+    const args = parseArgs(["--prompt", "x", "--progress-entries", "0"]);
+    expect(args.progressEntries).toBe(0);
+  });
+
+  it("throws when --max-iter has a numeric prefix with trailing chars (e.g. 5abc)", () => {
+    expect(() => parseArgs(["--prompt", "x", "--max-iter", "5abc"])).toThrow(
+      "--max-iter must be a positive integer",
+    );
+  });
+
+  it("throws when --timeout has trailing chars", () => {
+    expect(() => parseArgs(["--prompt", "x", "--timeout", "30s"])).toThrow(
+      "--timeout must be a positive integer",
+    );
+  });
+
+  it("parses --dangerous flag", () => {
+    const args = parseArgs(["--prompt", "x", "--dangerous"]);
+    expect(args.dangerous).toBe(true);
+  });
+
+  it("defaults --dangerous to false", () => {
+    const args = parseArgs(["--prompt", "x"]);
+    expect(args.dangerous).toBe(false);
   });
 
   it("throws when a flag is missing its value", () => {

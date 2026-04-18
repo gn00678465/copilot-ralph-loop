@@ -50,9 +50,30 @@ bun run typecheck # tsc --noEmit
 bun run lint      # biome check src/
 ```
 
-Unit tests cover all pure functions. SDK-calling code (runLoop) is not unit-tested.
+Unit tests cover all pure functions. `runLoop` is tested via mocked `@github/copilot-sdk` and `@clack/prompts`.
 
 ## Progress JSONL
 
-Append-only file in the target project. Raw line count is used for append detection;
-parsed entry count is used for injection slicing. These two counts are independent.
+Append-only file in the target project. Each iteration must append **exactly one valid
+progress entry** — no more, no less.
+
+`ProgressState` carries three fields:
+- `totalLineCount` — raw line count excluding trailing-newline artifact (includes blank lines)
+- `lines` — non-empty line strings, used for append-only prefix verification
+- `parsedEntries` — lines that pass the full `isProgressEntry` schema guard
+
+`validateProgressAppend(before, after)` enforces three invariants:
+1. **Prefix check**: `after.lines` must start with all of `before.lines` (detects overwrites
+   and truncate-then-append)
+2. **Raw delta check**: `totalLineCount` must increase by exactly 1 (rejects extra blank lines,
+   malformed lines, or multi-line appends)
+3. **Entry delta check**: `parsedEntries.length` must increase by exactly 1
+
+**Validation failure is a hard error** — `runLoop` calls `client.stop()` and `process.exit(1)`
+immediately. Silent memory corruption is not acceptable.
+
+A valid progress entry must satisfy `isProgressEntry`: finite integer `iteration`, `timestamp`
+matching exactly `YYYY-MM-DDTHH:MM:SSZ` (anchored regex + UTC round-trip check — rejects trailing
+junk, milliseconds, UTC-offset variants, and out-of-range values such as Feb 29 on non-leap years,
+month day 31 on 30-day months, and hour 24), string `summary`, and `files`/`learnings` arrays whose
+elements are all strings.

@@ -2,6 +2,8 @@ import { cancel, intro, log, outro, spinner } from "@clack/prompts";
 import {
   CopilotClient,
   type CopilotSession,
+  type PermissionHandler,
+  type PermissionRequest,
   approveAll,
 } from "@github/copilot-sdk";
 import {
@@ -10,7 +12,7 @@ import {
   formatProgressForInjection,
   loadProgressFile,
 } from "./prompt-builder.ts";
-import type { CliArgs } from "./types.ts";
+import type { CliArgs, ProgressState } from "./types.ts";
 
 export function isComplete(output: string, completeText: string): boolean {
   const nonEmptyLines = output.split("\n").filter((l) => l.trim() !== "");
@@ -20,10 +22,27 @@ export function isComplete(output: string, completeText: string): boolean {
 }
 
 export function validateProgressAppend(
-  linesBefore: number,
-  linesAfter: number,
+  before: ProgressState,
+  after: ProgressState,
 ): boolean {
-  return linesAfter === linesBefore + 1;
+  if (after.lines.length < before.lines.length) return false;
+  for (let i = 0; i < before.lines.length; i++) {
+    if (after.lines[i] !== before.lines[i]) return false;
+  }
+  return (
+    after.totalLineCount === before.totalLineCount + 1 &&
+    after.parsedEntries.length === before.parsedEntries.length + 1
+  );
+}
+
+export function createPermissionHandler(dangerous: boolean): PermissionHandler {
+  if (dangerous) return approveAll;
+  return (req: PermissionRequest) => {
+    log.warn(
+      `Permission denied (${req.kind}). Re-run with --dangerous to auto-approve.`,
+    );
+    return { kind: "denied-interactively-by-user" as const };
+  };
 }
 
 export async function runLoop(args: CliArgs): Promise<void> {
@@ -36,6 +55,7 @@ export async function runLoop(args: CliArgs): Promise<void> {
     completeText,
     timeout,
     verbose,
+    dangerous,
   } = args;
 
   intro(" ralph-loop ");
@@ -66,9 +86,9 @@ export async function runLoop(args: CliArgs): Promise<void> {
     process.exit(0);
   });
 
-  for (let i = 1; i <= maxIter; i++) {
-    let retried = false;
+  const onPermissionRequest = createPermissionHandler(dangerous);
 
+  for (let i = 1; i <= maxIter; i++) {
     const systemMessage = buildSystemMessage(dir, completeText);
     const progressBefore = loadProgressFile(dir);
     const progressText = formatProgressForInjection(
@@ -84,12 +104,11 @@ export async function runLoop(args: CliArgs): Promise<void> {
     let session: CopilotSession | undefined;
     try {
       session = await client.createSession({
-        onPermissionRequest: approveAll,
+        onPermissionRequest,
         model,
         streaming: true,
         systemMessage: { content: systemMessage },
       });
-      retried = false;
     } catch (err) {
       const error = err as NodeJS.ErrnoException;
       if (error.code === "ECONNREFUSED" || error.code === "ENOENT") {
@@ -100,25 +119,17 @@ export async function runLoop(args: CliArgs): Promise<void> {
         await client.stop();
         process.exit(1);
       }
-      if (!retried) {
-        retried = true;
-        s.message("Session creation failed — retrying once...");
-        try {
-          session = await client.createSession({
-            onPermissionRequest: approveAll,
-            model,
-            streaming: true,
-            systemMessage: { content: systemMessage },
-          });
-        } catch (retryErr) {
-          s.stop();
-          log.error(`Session creation failed after retry: ${retryErr}`);
-          await client.stop();
-          process.exit(1);
-        }
-      } else {
+      s.message("Session creation failed — retrying once...");
+      try {
+        session = await client.createSession({
+          onPermissionRequest,
+          model,
+          streaming: true,
+          systemMessage: { content: systemMessage },
+        });
+      } catch (retryErr) {
         s.stop();
-        log.error(`Session creation failed: ${err}`);
+        log.error(`Session creation failed after retry: ${retryErr}`);
         await client.stop();
         process.exit(1);
       }
@@ -129,7 +140,11 @@ export async function runLoop(args: CliArgs): Promise<void> {
     let output = "";
     let firstDelta = true;
 
-    session.on("assistant.message_delta", (event) => {
+    // All catch branches above call process.exit — session is always assigned here
+    if (!session) process.exit(1);
+    const activeSession = session;
+
+    activeSession.on("assistant.message_delta", (event) => {
       if (firstDelta) {
         s.stop(`Iteration ${i}/${maxIter}`);
         activeSpinner = null;
@@ -139,24 +154,34 @@ export async function runLoop(args: CliArgs): Promise<void> {
       output += event.data.deltaContent;
     });
 
-    session.on("session.idle", () => {
+    activeSession.on("session.idle", () => {
       if (!firstDelta) process.stdout.write("\n");
     });
 
-    session.on("session.error", (event) => {
+    activeSession.on("session.error", (event) => {
       log.error(`Session error: ${event.data}`);
     });
 
+    let sendErr: Error | undefined;
     try {
-      await session.sendAndWait({ prompt: iterPrompt }, timeout);
+      await activeSession.sendAndWait({ prompt: iterPrompt }, timeout);
     } catch (err) {
+      sendErr = err as Error;
+    } finally {
+      // Always disconnect before reading progress or starting next iteration
+      try {
+        await activeSession.disconnect();
+      } catch {}
+    }
+
+    if (sendErr) {
       if (!firstDelta) {
         // Partial output was already streamed — treat as incomplete iteration
-        log.warn(`Session ended early: ${(err as Error).message}`);
+        log.warn(`Session ended early: ${sendErr.message}`);
       } else {
         s.stop(`Iteration ${i}/${maxIter} — session error`);
         activeSpinner = null;
-        log.error(`Session failed: ${(err as Error).message}`);
+        log.error(`Session failed: ${sendErr.message}`);
         await client.stop();
         process.exit(1);
       }
@@ -167,14 +192,14 @@ export async function runLoop(args: CliArgs): Promise<void> {
       activeSpinner = null;
     }
 
+    // Session is disconnected before reading progress (eliminates post-send race)
     const progressAfter = loadProgressFile(dir);
-    if (
-      !validateProgressAppend(
-        progressBefore.rawLineCount,
-        progressAfter.rawLineCount,
-      )
-    ) {
-      log.warn("Agent did not append to progress.jsonl");
+    if (!validateProgressAppend(progressBefore, progressAfter)) {
+      log.error(
+        "Agent did not append exactly one valid progress entry — aborting",
+      );
+      await client.stop();
+      process.exit(1);
     }
 
     if (isComplete(output, completeText)) {

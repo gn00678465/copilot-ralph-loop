@@ -3,6 +3,26 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ProgressEntry, ProgressState } from "./types.ts";
 
+export function isProgressEntry(obj: unknown): obj is ProgressEntry {
+  if (typeof obj !== "object" || obj === null) return false;
+  const e = obj as Record<string, unknown>;
+  return (
+    typeof e.iteration === "number" &&
+    Number.isInteger(e.iteration) &&
+    Number.isFinite(e.iteration) &&
+    typeof e.timestamp === "string" &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(e.timestamp) &&
+    !Number.isNaN(new Date(e.timestamp as string).getTime()) &&
+    new Date(e.timestamp as string).toISOString().replace(/\.\d{3}Z$/, "Z") ===
+      e.timestamp &&
+    typeof e.summary === "string" &&
+    Array.isArray(e.files) &&
+    (e.files as unknown[]).every((f) => typeof f === "string") &&
+    Array.isArray(e.learnings) &&
+    (e.learnings as unknown[]).every((l) => typeof l === "string")
+  );
+}
+
 export function wrapCompleteText(value: string): string {
   return `<promise>${value}</promise>`;
 }
@@ -10,17 +30,29 @@ export function wrapCompleteText(value: string): string {
 export function loadProgressFile(dir: string): ProgressState {
   const filePath = join(dir, "progress.jsonl");
   if (!existsSync(filePath)) {
-    return { rawLineCount: 0, parsedEntries: [] };
+    return { totalLineCount: 0, lines: [], parsedEntries: [] };
   }
 
   const raw = readFileSync(filePath, "utf-8");
-  const lines = raw.split("\n").filter((l) => l.trim() !== "");
-  const rawLineCount = lines.length;
+  const rawLines = raw.split("\n");
+  // Trailing newline produces an empty string at the end — don't count it
+  const totalLineCount =
+    rawLines[rawLines.length - 1] === ""
+      ? rawLines.length - 1
+      : rawLines.length;
+  const lines = rawLines.filter((l) => l.trim() !== "");
 
   const parsedEntries: ProgressEntry[] = [];
   for (const line of lines) {
     try {
-      parsedEntries.push(JSON.parse(line) as ProgressEntry);
+      const parsed: unknown = JSON.parse(line);
+      if (isProgressEntry(parsed)) {
+        parsedEntries.push(parsed);
+      } else {
+        console.warn(
+          "[ralph-loop] Warning: skipped schema-invalid entry in progress.jsonl",
+        );
+      }
     } catch {
       console.warn(
         "[ralph-loop] Warning: skipped invalid JSON line in progress.jsonl",
@@ -28,7 +60,7 @@ export function loadProgressFile(dir: string): ProgressState {
     }
   }
 
-  return { rawLineCount, parsedEntries };
+  return { totalLineCount, lines, parsedEntries };
 }
 
 export function formatProgressForInjection(

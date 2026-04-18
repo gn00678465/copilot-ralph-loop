@@ -15,9 +15,10 @@
 Append one JSON line to `progress.jsonl`:
 
 ```jsonl
-{"iteration":N,"timestamp":"<ISO-8601>","summary":"<what was done>","files":["<changed files>"],"learnings":["<non-obvious discoveries>"]}
+{"iteration":N,"timestamp":"YYYY-MM-DDTHH:MM:SSZ","summary":"<what was done>","files":["<changed files>"],"learnings":["<non-obvious discoveries>"]}
 ```
 
+- `timestamp`: UTC time in **exactly** `YYYY-MM-DDTHH:MM:SSZ` format — no milliseconds, no UTC offset (e.g. `2026-04-18T11:29:33Z`). Other ISO-8601 shapes are rejected.
 - `summary`: One sentence describing what was accomplished this iteration.
 - `files`: Paths of files you created or modified.
 - `learnings`: Non-obvious things you discovered (e.g., "migrations must run before seeds").

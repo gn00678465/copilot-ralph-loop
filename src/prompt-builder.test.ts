@@ -2,10 +2,12 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { validateProgressAppend } from "./loop.ts";
 import {
   buildIterationPrompt,
   buildSystemMessage,
   formatProgressForInjection,
+  isProgressEntry,
   loadProgressFile,
   wrapCompleteText,
 } from "./prompt-builder.ts";
@@ -30,6 +32,114 @@ afterAll(() => {
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
+// ── isProgressEntry ───────────────────────────────────────────────────────────
+
+describe("isProgressEntry", () => {
+  it("returns true for a valid ProgressEntry", () => {
+    expect(isProgressEntry(entry(1))).toBe(true);
+  });
+
+  it("returns false for an empty object", () => {
+    expect(isProgressEntry({})).toBe(false);
+  });
+
+  it("returns false when iteration is missing", () => {
+    const { iteration: _, ...rest } = entry(1);
+    expect(isProgressEntry(rest)).toBe(false);
+  });
+
+  it("returns false when files is not an array", () => {
+    expect(isProgressEntry({ ...entry(1), files: "file.ts" })).toBe(false);
+  });
+
+  it("returns false for null", () => {
+    expect(isProgressEntry(null)).toBe(false);
+  });
+
+  it("returns false for a string", () => {
+    expect(isProgressEntry("valid")).toBe(false);
+  });
+
+  it("returns false when iteration is NaN", () => {
+    expect(isProgressEntry({ ...entry(1), iteration: Number.NaN })).toBe(false);
+  });
+
+  it("returns false when iteration is a float", () => {
+    expect(isProgressEntry({ ...entry(1), iteration: 1.5 })).toBe(false);
+  });
+
+  it("returns false when iteration is Infinity", () => {
+    expect(
+      isProgressEntry({ ...entry(1), iteration: Number.POSITIVE_INFINITY }),
+    ).toBe(false);
+  });
+
+  it("returns false when timestamp does not match ISO-8601 format", () => {
+    expect(isProgressEntry({ ...entry(1), timestamp: "2026-01-01" })).toBe(
+      false,
+    );
+    expect(isProgressEntry({ ...entry(1), timestamp: "not-a-date" })).toBe(
+      false,
+    );
+  });
+
+  it("regression: returns false for out-of-range timestamp values (2026-99-99T99:99:99Z)", () => {
+    expect(
+      isProgressEntry({ ...entry(1), timestamp: "2026-99-99T99:99:99Z" }),
+    ).toBe(false);
+  });
+
+  it("regression: returns false when timestamp has trailing junk after seconds", () => {
+    expect(
+      isProgressEntry({ ...entry(1), timestamp: "2026-01-01T00:00:00junk" }),
+    ).toBe(false);
+  });
+
+  it("regression: returns false when timestamp is missing Z suffix", () => {
+    expect(
+      isProgressEntry({ ...entry(1), timestamp: "2026-01-01T00:00:00" }),
+    ).toBe(false);
+  });
+
+  it("regression: returns false when timestamp has milliseconds (2026-01-01T00:00:00.123Z)", () => {
+    expect(
+      isProgressEntry({ ...entry(1), timestamp: "2026-01-01T00:00:00.123Z" }),
+    ).toBe(false);
+  });
+
+  it("regression: returns false when timestamp has UTC offset instead of Z (2026-01-01T00:00:00+02:00)", () => {
+    expect(
+      isProgressEntry({ ...entry(1), timestamp: "2026-01-01T00:00:00+02:00" }),
+    ).toBe(false);
+  });
+
+  it("regression: returns false for non-leap-year Feb 29 (2026-02-29T00:00:00Z)", () => {
+    expect(
+      isProgressEntry({ ...entry(1), timestamp: "2026-02-29T00:00:00Z" }),
+    ).toBe(false);
+  });
+
+  it("regression: returns false for out-of-range day April 31 (2026-04-31T00:00:00Z)", () => {
+    expect(
+      isProgressEntry({ ...entry(1), timestamp: "2026-04-31T00:00:00Z" }),
+    ).toBe(false);
+  });
+
+  it("regression: returns false for hour=24 midnight rollover (2026-12-31T24:00:00Z)", () => {
+    expect(
+      isProgressEntry({ ...entry(1), timestamp: "2026-12-31T24:00:00Z" }),
+    ).toBe(false);
+  });
+
+  it("returns false when files contains a non-string element", () => {
+    expect(isProgressEntry({ ...entry(1), files: ["ok", 42] })).toBe(false);
+  });
+
+  it("returns false when learnings contains a non-string element", () => {
+    expect(isProgressEntry({ ...entry(1), learnings: [true] })).toBe(false);
+  });
+});
+
 // ── wrapCompleteText ──────────────────────────────────────────────────────────
 
 describe("wrapCompleteText", () => {
@@ -47,11 +157,12 @@ describe("wrapCompleteText", () => {
 describe("loadProgressFile", () => {
   it("returns zero counts when file does not exist", () => {
     const result = loadProgressFile(join(tmpDir, "nonexistent"));
-    expect(result.rawLineCount).toBe(0);
+    expect(result.totalLineCount).toBe(0);
+    expect(result.lines).toHaveLength(0);
     expect(result.parsedEntries).toHaveLength(0);
   });
 
-  it("counts raw lines and parses valid JSON entries", () => {
+  it("parses valid JSON entries and sets totalLineCount", () => {
     const dir = join(tmpDir, "valid");
     mkdirSync(dir);
     writeFileSync(
@@ -59,12 +170,13 @@ describe("loadProgressFile", () => {
       `${[JSON.stringify(entry(1)), JSON.stringify(entry(2))].join("\n")}\n`,
     );
     const result = loadProgressFile(dir);
-    expect(result.rawLineCount).toBe(2);
+    expect(result.totalLineCount).toBe(2);
+    expect(result.lines).toHaveLength(2);
     expect(result.parsedEntries).toHaveLength(2);
     expect(result.parsedEntries[0].summary).toBe("Did thing 1");
   });
 
-  it("skips invalid JSON lines in parsedEntries but still counts them in rawLineCount", () => {
+  it("counts invalid JSON lines in totalLineCount and lines but excludes them from parsedEntries", () => {
     const dir = join(tmpDir, "invalid");
     mkdirSync(dir);
     writeFileSync(
@@ -72,8 +184,77 @@ describe("loadProgressFile", () => {
       `${[JSON.stringify(entry(1)), "NOT JSON", JSON.stringify(entry(3))].join("\n")}\n`,
     );
     const result = loadProgressFile(dir);
-    expect(result.rawLineCount).toBe(3);
+    expect(result.totalLineCount).toBe(3);
+    expect(result.lines).toHaveLength(3);
     expect(result.parsedEntries).toHaveLength(2);
+  });
+
+  it("counts schema-invalid JSON lines in totalLineCount but excludes them from parsedEntries", () => {
+    const dir = join(tmpDir, "schema-invalid");
+    mkdirSync(dir);
+    writeFileSync(
+      join(dir, "progress.jsonl"),
+      `${[JSON.stringify(entry(1)), JSON.stringify({ foo: "bar" })].join("\n")}\n`,
+    );
+    const result = loadProgressFile(dir);
+    expect(result.totalLineCount).toBe(2);
+    expect(result.lines).toHaveLength(2);
+    expect(result.parsedEntries).toHaveLength(1);
+  });
+
+  it("regression: blank-line append increases totalLineCount but not lines → validateProgressAppend fails", () => {
+    const dir = join(tmpDir, "blank-line");
+    mkdirSync(dir);
+    const file = join(dir, "progress.jsonl");
+    writeFileSync(file, `${JSON.stringify(entry(1))}\n`);
+    const before = loadProgressFile(dir);
+    // Agent appends only a blank line
+    writeFileSync(file, `${JSON.stringify(entry(1))}\n\n`);
+    const after = loadProgressFile(dir);
+    expect(after.lines).toHaveLength(before.lines.length); // blank not counted in lines
+    expect(after.totalLineCount).toBe(before.totalLineCount + 1); // but raw total increases
+    expect(validateProgressAppend(before, after)).toBe(false);
+  });
+
+  it("regression: no-trailing-newline entry is counted in totalLineCount and parsedEntries", () => {
+    const dir = join(tmpDir, "no-newline");
+    mkdirSync(dir);
+    writeFileSync(join(dir, "progress.jsonl"), JSON.stringify(entry(1)));
+    const result = loadProgressFile(dir);
+    expect(result.totalLineCount).toBe(1);
+    expect(result.parsedEntries).toHaveLength(1);
+  });
+
+  it("regression: valid+malformed append increases totalLineCount by 2 → validateProgressAppend fails", () => {
+    const dir = join(tmpDir, "valid-plus-malformed");
+    mkdirSync(dir);
+    const file = join(dir, "progress.jsonl");
+    writeFileSync(file, `${JSON.stringify(entry(1))}\n`);
+    const before = loadProgressFile(dir);
+    // Agent appends one valid entry AND one malformed non-empty line
+    writeFileSync(
+      file,
+      `${JSON.stringify(entry(1))}\n${JSON.stringify(entry(2))}\nBAD LINE\n`,
+    );
+    const after = loadProgressFile(dir);
+    expect(after.totalLineCount).toBe(before.totalLineCount + 2);
+    expect(after.lines).toHaveLength(before.lines.length + 2);
+    expect(after.parsedEntries).toHaveLength(before.parsedEntries.length + 1);
+    expect(validateProgressAppend(before, after)).toBe(false);
+  });
+
+  it("regression: valid entry plus trailing blank line increases totalLineCount by 2 → validateProgressAppend fails", () => {
+    const dir = join(tmpDir, "valid-plus-blank");
+    mkdirSync(dir);
+    const file = join(dir, "progress.jsonl");
+    // Start from empty state
+    const before = loadProgressFile(dir);
+    // Agent writes one valid entry followed by a blank line
+    writeFileSync(file, `${JSON.stringify(entry(1))}\n\n`);
+    const after = loadProgressFile(dir);
+    expect(after.totalLineCount).toBe(2); // entry line + blank line
+    expect(after.lines).toHaveLength(1); // blank filtered from lines
+    expect(validateProgressAppend(before, after)).toBe(false);
   });
 });
 

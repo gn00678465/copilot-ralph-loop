@@ -8,12 +8,23 @@ import type { CliArgs } from "./types.ts";
 function positiveInt(flag: string) {
   return (v: string): number => {
     const n = Number.parseInt(v, 10);
-    if (Number.isNaN(n) || n <= 0) {
+    if (!/^\d+$/.test(v) || n <= 0) {
       throw new InvalidArgumentError(
         `${flag} must be a positive integer, got: ${v}`,
       );
     }
     return n;
+  };
+}
+
+function nonNegativeInt(flag: string) {
+  return (v: string): number => {
+    if (!/^\d+$/.test(v)) {
+      throw new InvalidArgumentError(
+        `${flag} must be a non-negative integer, got: ${v}`,
+      );
+    }
+    return Number.parseInt(v, 10);
   };
 }
 
@@ -29,8 +40,8 @@ export function parseArgs(argv: string[]): CliArgs {
     .option("--max-iter <n>", "Safety limit", positiveInt("--max-iter"), 50)
     .option(
       "--progress-entries <n>",
-      "Recent JSONL entries to inject",
-      positiveInt("--progress-entries"),
+      "Recent JSONL entries to inject (0 = none)",
+      nonNegativeInt("--progress-entries"),
       10,
     )
     .option(
@@ -44,7 +55,12 @@ export function parseArgs(argv: string[]): CliArgs {
       positiveInt("--timeout"),
       300,
     )
-    .option("--verbose", "Debug output", false);
+    .option("--verbose", "Debug output", false)
+    .option(
+      "--dangerous",
+      "Auto-approve all Copilot permission requests (shell, file, network). Required for agent to act.",
+      false,
+    );
 
   program.parse(argv, { from: "user" });
   const opts = program.opts<{
@@ -56,6 +72,7 @@ export function parseArgs(argv: string[]): CliArgs {
     completeText: string;
     timeout: number;
     verbose: boolean;
+    dangerous: boolean;
   }>();
 
   return {
@@ -67,6 +84,7 @@ export function parseArgs(argv: string[]): CliArgs {
     completeText: wrapCompleteText(opts.completeText),
     timeout: opts.timeout * 1000,
     verbose: opts.verbose,
+    dangerous: opts.dangerous,
   };
 }
 

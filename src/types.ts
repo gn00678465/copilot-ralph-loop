@@ -7,6 +7,7 @@ export interface CliArgs {
   completeText: string; // always the wrapped form: <promise>...</promise>
   timeout: number; // sendAndWait timeout in ms
   verbose: boolean;
+  dangerous: boolean; // auto-approve all Copilot permission requests
 }
 
 export interface ProgressEntry {
@@ -18,6 +19,7 @@ export interface ProgressEntry {
 }
 
 export interface ProgressState {
-  rawLineCount: number;
+  totalLineCount: number; // all raw lines excl. trailing-newline artifact (incl. blank)
+  lines: string[]; // non-empty lines for append-only prefix verification
   parsedEntries: ProgressEntry[];
 }

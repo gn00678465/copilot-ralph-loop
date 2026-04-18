@@ -23,3 +23,11 @@ export interface ProgressState {
   lines: string[]; // non-empty lines for append-only prefix verification
   parsedEntries: ProgressEntry[];
 }
+
+export interface IterationPromptContext {
+  currentIteration: number;
+  maxIterations: number;
+  progressEntryCount: number;
+  lastProgressSummary: string | null;
+  progressText: string;
+}

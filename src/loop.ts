@@ -12,7 +12,11 @@ import {
   formatProgressForInjection,
   loadProgressFile,
 } from "./prompt-builder.ts";
-import type { CliArgs, ProgressState } from "./types.ts";
+import type {
+  CliArgs,
+  IterationPromptContext,
+  ProgressState,
+} from "./types.ts";
 
 export function isComplete(output: string, completeText: string): boolean {
   const nonEmptyLines = output.split("\n").filter((l) => l.trim() !== "");
@@ -95,7 +99,15 @@ export async function runLoop(args: CliArgs): Promise<void> {
       progressBefore.parsedEntries,
       progressEntries,
     );
-    const iterPrompt = buildIterationPrompt(prompt, progressText);
+    const iterPromptContext: IterationPromptContext = {
+      currentIteration: i,
+      maxIterations: maxIter,
+      progressEntryCount: progressBefore.parsedEntries.length,
+      lastProgressSummary:
+        progressBefore.parsedEntries.at(-1)?.summary ?? null,
+      progressText,
+    };
+    const iterPrompt = buildIterationPrompt(prompt, iterPromptContext);
 
     const s = spinner();
     activeSpinner = s;

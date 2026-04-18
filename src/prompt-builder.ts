@@ -1,7 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ProgressEntry, ProgressState } from "./types.ts";
+import type {
+  IterationPromptContext,
+  ProgressEntry,
+  ProgressState,
+} from "./types.ts";
 
 export function isProgressEntry(obj: unknown): obj is ProgressEntry {
   if (typeof obj !== "object" || obj === null) return false;
@@ -120,11 +124,29 @@ export function buildSystemMessage(
 
 export function buildIterationPrompt(
   task: string,
-  progressText: string,
+  context: IterationPromptContext,
 ): string {
-  const parts = [`## Task\n${task}`];
-  if (progressText.trim()) {
-    parts.push(`## Recent Progress\n${progressText}`);
+  const parts = [
+    "## Loop State",
+    `Iteration ${context.currentIteration} of ${context.maxIterations}`,
+    `Progress entries so far: ${context.progressEntryCount}`,
+    context.lastProgressSummary
+      ? `Last progress summary: ${context.lastProgressSummary}`
+      : "Last progress summary: none yet",
+    "",
+    "## Iteration Rules",
+    "- Advance exactly one concrete milestone this iteration.",
+    `- Append exactly one valid JSON line to progress.jsonl and set \`iteration\` to ${context.currentIteration}.`,
+    "- If work remains, use `learnings` to leave a concrete handoff for the next iteration.",
+    "- Do not output the completion signal until the final verification step is complete.",
+    "",
+    "## Task",
+    task,
+  ];
+
+  if (context.progressText.trim()) {
+    parts.push("", "## Recent Progress", context.progressText);
   }
-  return parts.join("\n\n");
+
+  return parts.join("\n");
 }

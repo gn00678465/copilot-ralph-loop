@@ -339,20 +339,37 @@ describe("buildSystemMessage", () => {
 });
 
 describe("buildIterationPrompt", () => {
-  it("includes task section", () => {
-    const result = buildIterationPrompt("Build auth", "");
-    expect(result).toContain("## Task");
-    expect(result).toContain("Build auth");
-  });
+  it("includes loop state, rules, and recent progress", () => {
+    const result = buildIterationPrompt("Build auth", {
+      currentIteration: 2,
+      maxIterations: 5,
+      progressEntryCount: 1,
+      lastProgressSummary: "Created tsconfig",
+      progressText: JSON.stringify(entry(1)),
+    });
 
-  it("includes recent progress section when progress is non-empty", () => {
-    const result = buildIterationPrompt("Build auth", "iteration 1 done");
+    expect(result).toContain("## Loop State");
+    expect(result).toContain("Iteration 2 of 5");
+    expect(result).toContain("Progress entries so far: 1");
+    expect(result).toContain("Last progress summary: Created tsconfig");
+    expect(result).toContain("## Iteration Rules");
+    expect(result).toContain(
+      "Advance exactly one concrete milestone this iteration.",
+    );
+    expect(result).toContain("set `iteration` to 2");
     expect(result).toContain("## Recent Progress");
-    expect(result).toContain("iteration 1 done");
   });
 
-  it("omits recent progress section when progress is empty", () => {
-    const result = buildIterationPrompt("Build auth", "");
+  it("omits recent progress when progress text is empty", () => {
+    const result = buildIterationPrompt("Build auth", {
+      currentIteration: 2,
+      maxIterations: 5,
+      progressEntryCount: 1,
+      lastProgressSummary: null,
+      progressText: "",
+    });
+
+    expect(result).toContain("Last progress summary: none yet");
     expect(result).not.toContain("## Recent Progress");
   });
 });

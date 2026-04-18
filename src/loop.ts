@@ -1,3 +1,4 @@
+import { cancel, intro, log, outro, spinner } from "@clack/prompts";
 import {
   CopilotClient,
   type CopilotSession,
@@ -33,8 +34,11 @@ export async function runLoop(args: CliArgs): Promise<void> {
     maxIter,
     progressEntries,
     completeText,
+    timeout,
     verbose,
   } = args;
+
+  intro(" ralph-loop ");
 
   let client: CopilotClient;
   try {
@@ -42,31 +46,29 @@ export async function runLoop(args: CliArgs): Promise<void> {
   } catch (err) {
     const error = err as NodeJS.ErrnoException;
     if (error.code === "ENOENT") {
-      console.error(
-        "[ralph-loop] GitHub Copilot CLI not found.\n" +
+      log.error(
+        "GitHub Copilot CLI not found.\n" +
           "Install it: gh extension install github/gh-copilot\n" +
           "Authenticate: gh auth login",
       );
     } else {
-      console.error(
-        "[ralph-loop] Failed to start Copilot client:",
-        error.message,
-      );
+      log.error(`Failed to start Copilot client: ${error.message}`);
     }
     process.exit(1);
   }
 
+  let activeSpinner: ReturnType<typeof spinner> | null = null;
+
   process.on("SIGINT", async () => {
-    console.error("\n[ralph-loop] Interrupted. Shutting down...");
+    activeSpinner?.stop();
+    cancel("Interrupted. Shutting down...");
     await client.stop();
     process.exit(0);
   });
 
   for (let i = 1; i <= maxIter; i++) {
     let retried = false;
-    if (verbose) console.error(`[ralph-loop] Iteration ${i}/${maxIter}`);
 
-    // Re-read context each iteration to pick up agent-written updates
     const systemMessage = buildSystemMessage(dir, completeText);
     const progressBefore = loadProgressFile(dir);
     const progressText = formatProgressForInjection(
@@ -74,6 +76,10 @@ export async function runLoop(args: CliArgs): Promise<void> {
       progressEntries,
     );
     const iterPrompt = buildIterationPrompt(prompt, progressText);
+
+    const s = spinner();
+    activeSpinner = s;
+    s.start(`Iteration ${i}/${maxIter}${verbose ? " — creating session" : ""}`);
 
     let session: CopilotSession | undefined;
     try {
@@ -87,15 +93,16 @@ export async function runLoop(args: CliArgs): Promise<void> {
     } catch (err) {
       const error = err as NodeJS.ErrnoException;
       if (error.code === "ECONNREFUSED" || error.code === "ENOENT") {
-        console.error(
-          "[ralph-loop] Cannot connect to Copilot CLI. Make sure you are authenticated: gh auth login",
+        s.stop();
+        log.error(
+          "Cannot connect to Copilot CLI. Make sure you are authenticated: gh auth login",
         );
         await client.stop();
         process.exit(1);
       }
       if (!retried) {
         retried = true;
-        console.error("[ralph-loop] Session creation failed, retrying once...");
+        s.message("Session creation failed — retrying once...");
         try {
           session = await client.createSession({
             onPermissionRequest: approveAll,
@@ -104,33 +111,61 @@ export async function runLoop(args: CliArgs): Promise<void> {
             systemMessage: { content: systemMessage },
           });
         } catch (retryErr) {
-          console.error(
-            "[ralph-loop] Session creation failed after retry:",
-            retryErr,
-          );
+          s.stop();
+          log.error(`Session creation failed after retry: ${retryErr}`);
           await client.stop();
           process.exit(1);
         }
       } else {
-        console.error("[ralph-loop] Session creation failed:", err);
+        s.stop();
+        log.error(`Session creation failed: ${err}`);
         await client.stop();
         process.exit(1);
       }
     }
 
+    if (verbose) s.message(`Iteration ${i}/${maxIter} — waiting for response`);
+
     let output = "";
+    let firstDelta = true;
+
     session.on("assistant.message_delta", (event) => {
+      if (firstDelta) {
+        s.stop(`Iteration ${i}/${maxIter}`);
+        activeSpinner = null;
+        firstDelta = false;
+      }
       process.stdout.write(event.data.deltaContent);
       output += event.data.deltaContent;
     });
+
     session.on("session.idle", () => {
-      process.stdout.write("\n");
-    });
-    session.on("session.error", (event) => {
-      console.error("[ralph-loop] Session error:", event.data);
+      if (!firstDelta) process.stdout.write("\n");
     });
 
-    await session.sendAndWait({ prompt: iterPrompt });
+    session.on("session.error", (event) => {
+      log.error(`Session error: ${event.data}`);
+    });
+
+    try {
+      await session.sendAndWait({ prompt: iterPrompt }, timeout);
+    } catch (err) {
+      if (!firstDelta) {
+        // Partial output was already streamed — treat as incomplete iteration
+        log.warn(`Session ended early: ${(err as Error).message}`);
+      } else {
+        s.stop(`Iteration ${i}/${maxIter} — session error`);
+        activeSpinner = null;
+        log.error(`Session failed: ${(err as Error).message}`);
+        await client.stop();
+        process.exit(1);
+      }
+    }
+
+    if (firstDelta) {
+      s.stop(`Iteration ${i}/${maxIter} — no output`);
+      activeSpinner = null;
+    }
 
     const progressAfter = loadProgressFile(dir);
     if (
@@ -139,13 +174,11 @@ export async function runLoop(args: CliArgs): Promise<void> {
         progressAfter.rawLineCount,
       )
     ) {
-      console.warn(
-        "[ralph-loop] Warning: agent did not append to progress.jsonl",
-      );
+      log.warn("Agent did not append to progress.jsonl");
     }
 
     if (isComplete(output, completeText)) {
-      if (verbose) console.error("[ralph-loop] Task complete.");
+      outro("Task complete.");
       await client.stop();
       process.exit(0);
     }
@@ -155,7 +188,8 @@ export async function runLoop(args: CliArgs): Promise<void> {
     }
   }
 
-  console.error(`[ralph-loop] Reached max iterations (${maxIter}). Exiting.`);
+  log.error(`Reached max iterations (${maxIter}). Exiting.`);
+  outro("Stopping.");
   await client.stop();
   process.exit(1);
 }

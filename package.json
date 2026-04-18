@@ -16,7 +16,9 @@
     "preinstall": "node -e \"console.log('\\n⚠️  建議先執行: npm run setup 或 bun run setup\\n')\""
   },
   "dependencies": {
+    "@clack/prompts": "^1.2.0",
     "@github/copilot-sdk": "^0.2.2",
+    "commander": "^14.0.3",
     "tsx": "^4.21.0"
   },
   "devDependencies": {

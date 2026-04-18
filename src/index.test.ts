@@ -12,7 +12,7 @@ describe("parseArgs", () => {
     const args = parseArgs(["--prompt", "Build auth"]);
     expect(args.maxIter).toBe(50);
     expect(args.progressEntries).toBe(10);
-    expect(args.model).toBe("gpt-4.1");
+    expect(args.model).toBe("gpt-5.4");
     expect(args.completeText).toBe("<promise>COMPLETE</promise>");
     expect(args.verbose).toBe(false);
     expect(args.dir).toBe(process.cwd());
@@ -79,9 +79,9 @@ describe("parseArgs", () => {
     ).toThrow("--progress-entries must be a positive integer");
   });
 
-  it("throws with a message when a flag is missing its value", () => {
+  it("throws when a flag is missing its value", () => {
     expect(() => parseArgs(["--prompt", "x", "--model"])).toThrow(
-      "Missing value for --model",
+      "argument missing",
     );
   });
 });

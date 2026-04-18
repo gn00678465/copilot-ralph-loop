@@ -1,75 +1,72 @@
 #!/usr/bin/env bun
 import { resolve } from "node:path";
+import { Command, CommanderError, InvalidArgumentError } from "commander";
 import { runLoop } from "./loop.ts";
 import { wrapCompleteText } from "./prompt-builder.ts";
 import type { CliArgs } from "./types.ts";
 
-function parsePositiveInt(flag: string, value: string): number {
-  const n = Number.parseInt(value, 10);
-  if (Number.isNaN(n) || n <= 0) {
-    throw new Error(`${flag} must be a positive integer, got: ${value}`);
-  }
-  return n;
+function positiveInt(flag: string) {
+  return (v: string): number => {
+    const n = Number.parseInt(v, 10);
+    if (Number.isNaN(n) || n <= 0) {
+      throw new InvalidArgumentError(
+        `${flag} must be a positive integer, got: ${v}`,
+      );
+    }
+    return n;
+  };
 }
 
 export function parseArgs(argv: string[]): CliArgs {
-  const args: Record<string, string | boolean> = {};
-  let i = 0;
-  while (i < argv.length) {
-    const arg = argv[i];
-    if (arg === "--verbose") {
-      args.verbose = true;
-      i++;
-    } else if (arg.startsWith("--")) {
-      const key = arg.slice(2);
-      const value = argv[i + 1];
-      if (!value || value.startsWith("--")) {
-        throw new Error(`Missing value for ${arg}`);
-      }
-      args[key] = value;
-      i += 2;
-    } else {
-      i++;
-    }
-  }
+  const program = new Command()
+    .name("ralph-loop")
+    .description("Autonomous agent loop using GitHub Copilot")
+    .version("1.0.0", "-V, --version")
+    .exitOverride()
+    .requiredOption("-p, --prompt <text>", "Required: task description")
+    .option("--dir <path>", "Target project path (default: cwd)")
+    .option("--model <name>", "Model to use", "gpt-5.4")
+    .option("--max-iter <n>", "Safety limit", positiveInt("--max-iter"), 50)
+    .option(
+      "--progress-entries <n>",
+      "Recent JSONL entries to inject",
+      positiveInt("--progress-entries"),
+      10,
+    )
+    .option(
+      "--complete-text <value>",
+      "Inner completion value (default: COMPLETE)",
+      "COMPLETE",
+    )
+    .option(
+      "--timeout <n>",
+      "sendAndWait timeout in seconds",
+      positiveInt("--timeout"),
+      300,
+    )
+    .option("--verbose", "Debug output", false);
 
-  if (!args.prompt) {
-    console.error("Usage: ralph-loop --prompt <task> [options]");
-    console.error("  --prompt <text>           Required: task description");
-    console.error(
-      "  --dir <path>              Target project path (default: cwd)",
-    );
-    console.error(
-      "  --model <name>            Model to use (default: gpt-4.1)",
-    );
-    console.error("  --max-iter <n>            Safety limit (default: 50)");
-    console.error(
-      "  --progress-entries <n>    Recent JSONL entries to inject (default: 10)",
-    );
-    console.error(
-      "  --complete-text <value>   Inner completion value (default: COMPLETE)",
-    );
-    console.error(
-      "                            Wrapped as <promise>VALUE</promise>",
-    );
-    console.error("  --verbose                 Debug output");
-    throw new Error("--prompt is required");
-  }
+  program.parse(argv, { from: "user" });
+  const opts = program.opts<{
+    prompt: string;
+    dir: string | undefined;
+    model: string;
+    maxIter: number;
+    progressEntries: number;
+    completeText: string;
+    timeout: number;
+    verbose: boolean;
+  }>();
 
   return {
-    prompt: args.prompt as string,
-    dir: resolve((args.dir as string) ?? process.cwd()),
-    model: (args.model as string) ?? "gpt-4.1",
-    maxIter: args["max-iter"]
-      ? parsePositiveInt("--max-iter", args["max-iter"] as string)
-      : 50,
-    progressEntries: args["progress-entries"]
-      ? parsePositiveInt("--progress-entries", args["progress-entries"] as string)
-      : 10,
-    completeText: wrapCompleteText(
-      (args["complete-text"] as string) ?? "COMPLETE",
-    ),
-    verbose: (args.verbose as boolean) ?? false,
+    prompt: opts.prompt,
+    dir: resolve(opts.dir ?? process.cwd()),
+    model: opts.model,
+    maxIter: opts.maxIter,
+    progressEntries: opts.progressEntries,
+    completeText: wrapCompleteText(opts.completeText),
+    timeout: opts.timeout * 1000,
+    verbose: opts.verbose,
   };
 }
 
@@ -78,6 +75,15 @@ async function main(): Promise<void> {
   try {
     args = parseArgs(process.argv.slice(2));
   } catch (err) {
+    if (err instanceof CommanderError) {
+      if (
+        err.code === "commander.helpDisplayed" ||
+        err.code === "commander.version"
+      ) {
+        process.exit(0);
+      }
+      process.exit(err.exitCode ?? 1);
+    }
     console.error(`[ralph-loop] ${(err as Error).message}`);
     process.exit(1);
   }

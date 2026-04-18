@@ -51,4 +51,37 @@ describe("parseArgs", () => {
   it("throws when --prompt is missing", () => {
     expect(() => parseArgs([])).toThrow();
   });
+
+  it("throws when --max-iter is not a number", () => {
+    expect(() => parseArgs(["--prompt", "x", "--max-iter", "foo"])).toThrow(
+      "--max-iter must be a positive integer",
+    );
+  });
+
+  it("throws when --max-iter is zero or negative", () => {
+    expect(() => parseArgs(["--prompt", "x", "--max-iter", "0"])).toThrow(
+      "--max-iter must be a positive integer",
+    );
+    expect(() => parseArgs(["--prompt", "x", "--max-iter", "-5"])).toThrow(
+      "--max-iter must be a positive integer",
+    );
+  });
+
+  it("throws when --progress-entries is not a number", () => {
+    expect(() =>
+      parseArgs(["--prompt", "x", "--progress-entries", "abc"]),
+    ).toThrow("--progress-entries must be a positive integer");
+  });
+
+  it("throws when --progress-entries is zero or negative", () => {
+    expect(() =>
+      parseArgs(["--prompt", "x", "--progress-entries", "-1"]),
+    ).toThrow("--progress-entries must be a positive integer");
+  });
+
+  it("throws with a message when a flag is missing its value", () => {
+    expect(() => parseArgs(["--prompt", "x", "--model"])).toThrow(
+      "Missing value for --model",
+    );
+  });
 });

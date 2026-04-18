@@ -4,6 +4,14 @@ import { runLoop } from "./loop.ts";
 import { wrapCompleteText } from "./prompt-builder.ts";
 import type { CliArgs } from "./types.ts";
 
+function parsePositiveInt(flag: string, value: string): number {
+  const n = Number.parseInt(value, 10);
+  if (Number.isNaN(n) || n <= 0) {
+    throw new Error(`${flag} must be a positive integer, got: ${value}`);
+  }
+  return n;
+}
+
 export function parseArgs(argv: string[]): CliArgs {
   const args: Record<string, string | boolean> = {};
   let i = 0;
@@ -53,10 +61,10 @@ export function parseArgs(argv: string[]): CliArgs {
     dir: resolve((args.dir as string) ?? process.cwd()),
     model: (args.model as string) ?? "gpt-4.1",
     maxIter: args["max-iter"]
-      ? Number.parseInt(args["max-iter"] as string, 10)
+      ? parsePositiveInt("--max-iter", args["max-iter"] as string)
       : 50,
     progressEntries: args["progress-entries"]
-      ? Number.parseInt(args["progress-entries"] as string, 10)
+      ? parsePositiveInt("--progress-entries", args["progress-entries"] as string)
       : 10,
     completeText: wrapCompleteText(
       (args["complete-text"] as string) ?? "COMPLETE",
@@ -69,7 +77,8 @@ async function main(): Promise<void> {
   let args: CliArgs;
   try {
     args = parseArgs(process.argv.slice(2));
-  } catch {
+  } catch (err) {
+    console.error(`[ralph-loop] ${(err as Error).message}`);
     process.exit(1);
   }
   await runLoop(args);

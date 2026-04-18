@@ -62,9 +62,8 @@ export async function runLoop(args: CliArgs): Promise<void> {
     process.exit(0);
   });
 
-  let retried = false;
-
   for (let i = 1; i <= maxIter; i++) {
+    let retried = false;
     if (verbose) console.error(`[ralph-loop] Iteration ${i}/${maxIter}`);
 
     // Re-read context each iteration to pick up agent-written updates

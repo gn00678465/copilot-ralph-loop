@@ -11,9 +11,7 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "lint": "biome check src/",
-    "lint:fix": "biome check --write src/",
-    "setup": "npx tsx script/setup.ts",
-    "preinstall": "node -e \"console.log('\\n⚠️  建議先執行: npm run setup 或 bun run setup\\n')\""
+    "lint:fix": "biome check --write src/"
   },
   "dependencies": {
     "@clack/prompts": "^1.2.0",

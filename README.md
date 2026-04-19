@@ -1,85 +1,59 @@
-# Copilot SDK Starter Template 🚀
+# ralph-loop
 
-A minimal starter template for building GitHub Copilot extensions using the [@github/copilot-sdk](https://github.com/copilot-extensions/copilot-sdk.js).
+Autonomous agent loop CLI built on the [GitHub Copilot SDK](https://github.com/copilot-extensions/copilot-sdk.js). Sends a task prompt to Copilot, runs multiple iterations until the agent outputs a completion signal, and tracks progress in a `progress.jsonl` file.
 
-## ✨ Features
+## Requirements
 
-- 🔧 Pre-configured with Copilot SDK
-- ⚡ Bun / pnpm runtime support
-- 📦 TypeScript ready
-- 🤖 Multi-agent skill support (GitHub Copilot, Gemini CLI, Claude Code)
-- 🎯 Minimal setup - get started in minutes
+- [Bun](https://bun.sh/) >= 1.3
+- GitHub Copilot access
 
-## 🚀 Quick Start
-
-**1. Use this template**
-
-Click "Use this template" button or:
-```bash
-gh repo create my-copilot-extension --template yourusername/copilot-sdk-starter
-```
-
-**2. Install Copilot Skills**
+## Installation
 
 ```bash
-# Set up skills for all agents (default)
-pnpm setup
-# or
-bun run setup
-
-# Set up skills for specific agents only
-pnpm setup -a github-copilot
-pnpm setup -a claude-code -a gemini-cli
-```
-
-Available agents: `claude-code`, `github-copilot`, `gemini-cli`
-
-**3. Install project dependencies**
-
-```bash
-pnpm install
-# or
 bun install
 ```
 
-**4. Start building**
+## Usage
 
-Edit `index.js` to build your Copilot extension, then run:
 ```bash
-bun run index.js
+ralph-loop --prompt "Your task description" [options]
 ```
 
-## 📁 Project Structure
+### Options
 
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-p, --prompt <text>` | required | Task description sent to the agent |
+| `--dir <path>` | cwd | Target project directory |
+| `--model <name>` | `gpt-5.4` | Model to use |
+| `--max-iter <n>` | `50` | Maximum iteration safety limit |
+| `--progress-entries <n>` | `10` | Recent `progress.jsonl` entries injected per iteration |
+| `--timeout <n>` | `300` | Per-iteration timeout in seconds |
+| `--complete-text <value>` | `COMPLETE` | Inner completion signal value |
+| `--dangerous` | `false` | Auto-approve all Copilot permission requests (shell, file, network) |
+| `--verbose` | `false` | Debug output |
+
+### Example
+
+```bash
+ralph-loop \
+  --dir /path/to/project \
+  --max-iter 5 \
+  --dangerous \
+  --prompt "Read AGENTS.md and complete the milestones one per iteration."
 ```
-copilot-sdk-starter/
-├── script/
-│   └── setup.ts      # Skill installation & setup script
-├── index.js          # Your extension entry point (create this)
-├── package.json      # Dependencies and scripts
-├── README.md         # This file
-└── .gitignore        # Git ignore rules
+
+## How It Works
+
+1. Each iteration builds a prompt from the task description and recent `progress.jsonl` entries.
+2. The prompt is sent to Copilot via `sendAndWait`.
+3. The agent writes one `progress.jsonl` entry per iteration (append-only, validated).
+4. The loop exits when the agent's last output line matches `<promise>COMPLETE</promise>`, or when `--max-iter` is reached.
+
+## Development
+
+```bash
+bun test          # run tests
+bun run typecheck # TypeScript check
+bun run lint      # Biome linter
 ```
-
-## 🛠️ Development
-
-Refer to the [Copilot SDK documentation](https://github.com/copilot-extensions/copilot-sdk.js) for available APIs.
-
-## 📦 Built With
-
-- [@github/copilot-sdk](https://github.com/copilot-extensions/copilot-sdk.js) - GitHub Copilot SDK
-- [Bun](https://bun.com) - Fast JavaScript runtime
-- [pnpm](https://pnpm.io) - Fast, disk space efficient package manager
-- [TypeScript](https://www.typescriptlang.org/) - Type safety
-
-## 📝 License
-
-MIT
-
-## 🤝 Contributing
-
-Contributions welcome! Please open an issue or PR.
-
----
-
-**Created from template:** [copilot-sdk-starter](https://github.com/yourusername/copilot-sdk-starter)
